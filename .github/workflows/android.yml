@@ -1,0 +1,69 @@
+name: Godot checks and Android APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: night-courier-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.3.0
+          use-dotnet: false
+          include-templates: true
+      - name: Import and parse project
+        run: python3 ci/check.py import
+      - name: Test gameplay, persistence and UI
+        run: python3 ci/check.py tests
+      - name: Capture real rendered screens
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: python3 ci/check.py screenshots
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK components
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+      - name: Configure Android exporter
+        run: python3 ci/configure_android.py
+      - name: Export debug APK
+        run: python3 ci/check.py android
+      - name: Verify APK signature and package
+        run: |
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose build/night-courier-debug.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging build/night-courier-debug.apk
+          sha256sum build/night-courier-debug.apk > build/SHA256SUMS.txt
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: night-courier-android-debug
+          path: |
+            build/night-courier-debug.apk
+            build/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload screenshots and diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: night-courier-checks
+          path: |
+            build/screenshots/
+            build/logs/
+          if-no-files-found: ignore
+          retention-days: 14

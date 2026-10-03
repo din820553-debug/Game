@@ -22,7 +22,9 @@ var sound_on = true
 var audio_player: AudioStreamPlayer
 var audio_phase = 0.0
 
+
 func _ready():
+	get_tree().quit_on_go_back = false
 	# Tests inject an isolated save store before attaching this scene.
 	if game == null:
 		game = GameState.new()

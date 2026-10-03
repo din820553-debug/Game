@@ -16,6 +16,7 @@ commands = {
     "android": ["godot", "--headless", "--path", ".", "--export-debug", "Android", "build/night-courier-debug.apk"],
 }
 pathlib.Path("build/logs").mkdir(parents=True, exist_ok=True)
+pathlib.Path("build/.gdignore").touch()
 try:
     result = subprocess.run(commands[mode], stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, timeout=240,

@@ -188,6 +188,7 @@ func run_tests():
 	await process_frame
 	await process_frame
 	check(app.screen == "home", "main menu on launch")
+	check(not app.audio_player.playing, "menu does not generate engine audio")
 	var start_button = app.ui.find_child("StartShift", true, false)
 	check(start_button != null, "main CTA exists")
 	print("LAYOUT: viewport=", root.get_visible_rect(), " start=", start_button.get_global_rect())
@@ -229,6 +230,7 @@ func run_tests():
 	app._process(0.2)
 	check(absf(app.game.run["time"] - (time_before - 0.2)) < 0.0001, "slow frames preserve timer")
 	app.pause_game()
+	check(not app.audio_player.playing, "pause releases audio playback")
 	time_before = app.game.run["time"]
 	app._process(0.05)
 	check(app.game.run["time"] == time_before, "pause freezes simulation")
@@ -259,6 +261,7 @@ func run_tests():
 	app.queue_free()
 	await process_frame
 	await process_frame
+	await create_timer(0.2).timeout
 	for path in paths:
 		clean(path)
 	if failures == 0:

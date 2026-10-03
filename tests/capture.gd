@@ -62,5 +62,6 @@ func capture():
 	await snap("09-tall-home")
 	app.queue_free()
 	await process_frame
+	await create_timer(0.2).timeout
 	print("SCREENSHOTS PASSED")
 	quit()

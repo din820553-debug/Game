@@ -28,7 +28,8 @@ output = result.stdout
 print(output)
 pathlib.Path(f"build/logs/{mode}.log").write_text(output, encoding="utf-8")
 if result.returncode or any(token in output for token in (
-    "SCRIPT ERROR:", "Parse Error:", "TESTS FAILED", "FAIL:", "ERROR:"
+    "SCRIPT ERROR:", "Parse Error:", "TESTS FAILED", "FAIL:", "ERROR:",
+    "ObjectDB instances leaked"
 )):
     raise SystemExit(1)
 if mode == "tests" and "TESTS PASSED:" not in output:

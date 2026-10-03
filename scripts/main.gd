@@ -59,9 +59,23 @@ func build_audio():
 	audio_player.stream = generator
 	audio_player.volume_db = -30
 	add_child(audio_player)
-	audio_player.play()
+
+func stop_audio():
+	if is_instance_valid(audio_player):
+		audio_player.stop()
+
+func _exit_tree():
+	if is_instance_valid(audio_player):
+		audio_player.stop()
+		audio_player.stream = null
 
 func tick_audio():
+	if not sound_on or screen != "ride":
+		if audio_player.playing:
+			stop_audio()
+		return
+	if not audio_player.playing:
+		audio_player.play()
 	var playback = audio_player.get_stream_playback()
 	if playback == null:
 		return
@@ -440,6 +454,7 @@ func pause_game():
 	if screen not in ["ride", "event"]:
 		return
 	previous_screen = screen
+	stop_audio()
 	screen = "pause"
 	var box = panel("Пауза", "Поездка и таймер остановлены.")
 	button(box, "Продолжить", resume_game)
@@ -506,6 +521,7 @@ func choose(index):
 		notify(game.last_message)
 
 func finish(reason):
+	stop_audio()
 	var result = game.settle(reason)
 	if result.is_empty():
 		return

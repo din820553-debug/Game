@@ -2,6 +2,8 @@ extends SceneTree
 const Catalog = preload("res://data/catalog.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const SaveStore = preload("res://scripts/save_store.gd")
+const Preferences = preload("res://scripts/preferences.gd")
+const FailingStore = preload("res://tests/failing_store.gd")
 var failures = 0
 var checks = 0
 var paths = []
@@ -32,6 +34,9 @@ func run_tests():
 	check(Catalog.events().size() == 12, "12 event types")
 	var state = GameState.new(isolated("economy"), 123)
 	check(state.profile["bank"] == 25, "starting bank")
+	var original_offers = state.offers.duplicate(true)
+	state.bank_shift()
+	check(state.offers == original_offers, "empty cashout cannot reroll offers")
 	var seen = {}
 	for i in range(600):
 		state.generate_offers()
@@ -152,12 +157,43 @@ func run_tests():
 	check(restored["bank"] == 456 and restored["shift"] == 0, "abandoned delivery loses shift")
 	check(not restored["active_delivery"], "abandoned marker cleared")
 
+	var failed = GameState.new(FailingStore.new(), 9)
+	check(not failed.start_order(0), "cannot start when save fails")
+	check(failed.run.is_empty() and not failed.profile["active_delivery"], "failed start rolls back marker")
+	failed.profile["bank"] = 1000
+	check(not failed.buy_upgrade("engine"), "failed purchase rejected")
+	check(failed.profile["bank"] == 1000 and failed.levels()["engine"] == 1, "failed upgrade rolled back")
+	check(not failed.select_vehicle("scooter"), "failed vehicle purchase rejected")
+	check(failed.profile["vehicle"] == "bike" and failed.profile["bank"] == 1000, "failed vehicle purchase rolled back")
+	failed.profile["shift"] = 100
+	check(not failed.bank_shift(), "failed cashout rejected")
+	check(failed.profile["bank"] == 1000 and failed.profile["shift"] == 100, "failed cashout preserves earnings")
+	var settings_path = "user://test_preferences.cfg"
+	paths.append(settings_path)
+	clean(settings_path)
+	var preferences = Preferences.new(settings_path)
+	preferences.sound = false
+	preferences.quality = "low"
+	check(preferences.save(), "settings saved")
+	var restored_preferences = Preferences.new(settings_path)
+	check(not restored_preferences.sound and restored_preferences.quality == "low", "settings roundtrip")
+	restored_preferences.sound = true
+	restored_preferences.quality = "high"
 	var app = load("res://main.tscn").instantiate()
+	app.preferences = restored_preferences
 	app.game = GameState.new(isolated("ui"), 987)
 	root.add_child(app)
 	app.set_process(false)
 	await process_frame
-	check(app.screen == "orders", "orders screen")
+	check(app.screen == "home", "main menu on launch")
+	var start_button = app.ui.find_child("StartShift", true, false)
+	check(start_button != null, "main CTA exists")
+	check(root.get_visible_rect().encloses(start_button.get_global_rect()), "main CTA fits portrait screen")
+	app.begin_shift()
+	check(app.screen == "help", "first launch tutorial")
+	app.complete_tutorial()
+	check(app.screen == "orders", "tutorial leads to orders")
+	check(Preferences.new(settings_path).tutorial_seen, "tutorial completion saved")
 	app.show_garage()
 	await process_frame
 	check(app.screen == "garage", "garage screen")
@@ -184,6 +220,9 @@ func run_tests():
 	touch.pressed = false
 	app.drive_input(touch)
 	check(not app.holding, "release stops acceleration")
+	time_before = app.game.run["time"]
+	app._process(0.2)
+	check(absf(app.game.run["time"] - (time_before - 0.2)) < 0.0001, "slow frames preserve timer")
 	app.pause_game()
 	time_before = app.game.run["time"]
 	app._process(0.05)
@@ -197,10 +236,21 @@ func run_tests():
 	check(app.screen == "event", "focus pause preserves decision")
 	app.choose(0)
 	check(app.screen == "ride", "decision returns to ride")
+	app.pause_game()
+	app.confirm_abandon()
+	check(app.screen == "confirm_abandon", "abandon requires confirmation")
+	app.return_to_pause()
+	check(app.screen == "pause", "confirmation can be cancelled")
 	app.finish("abandoned")
 	check(app.screen == "result", "result screen")
 	app.bank_and_garage()
 	check(app.screen == "garage", "result cashout")
+	app.show_home()
+	app.show_settings()
+	app.toggle_quality()
+	check(app.city.quality == "low" and not app.city.sun.shadow_enabled, "low graphics disables shadows")
+	app.toggle_sound()
+	check(not Preferences.new(settings_path).sound, "sound toggle saved")
 	app.queue_free()
 	await process_frame
 	await process_frame

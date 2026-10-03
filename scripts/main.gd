@@ -2,6 +2,14 @@ extends Node3D
 const Catalog = preload("res://data/catalog.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const City = preload("res://scripts/city.gd")
+const Preferences = preload("res://scripts/preferences.gd")
+const MenuOverlay = preload("res://shaders/menu_overlay.gdshader")
+const INK = Color("#0b1721")
+const PAPER = Color("#eef0e8")
+const AMBER = Color("#efb86b")
+var preferences
+var health_meter: ProgressBar
+var nitro_button: Button
 
 var game
 var city
@@ -10,7 +18,7 @@ var hud: Label
 var meter: ProgressBar
 var toast: Label
 var toast_left = 0.0
-var screen = "orders"
+var screen = "home"
 var previous_screen = "ride"
 var holding = false
 var pointer_id = -1
@@ -28,13 +36,17 @@ func _ready():
 	# Tests inject an isolated save store before attaching this scene.
 	if game == null:
 		game = GameState.new()
+	if preferences == null:
+		preferences = Preferences.new()
+	sound_on = preferences.sound
 	city = City.new()
 	add_child(city)
 	city.hit.connect(on_collision)
 	city.set_vehicle(game.profile["vehicle"])
+	city.set_quality(preferences.quality)
 	build_ui()
 	build_audio()
-	show_orders()
+	show_home()
 	ready_done = true
 	if game.last_message != "":
 		notify(game.last_message)
@@ -73,17 +85,17 @@ func build_ui():
 	var theme = Theme.new()
 	theme.default_font_size = 16
 	var normal = StyleBoxFlat.new()
-	normal.bg_color = Color("#142438")
-	normal.border_color = Color("#2c5466")
+	normal.bg_color = Color("#182a35")
+	normal.border_color = Color("#344851")
 	normal.set_border_width_all(1)
-	normal.set_corner_radius_all(10)
+	normal.set_corner_radius_all(12)
 	normal.content_margin_left = 14
 	normal.content_margin_right = 14
 	normal.content_margin_top = 12
 	normal.content_margin_bottom = 12
 	theme.set_stylebox("normal", "Button", normal)
 	var hover = normal.duplicate()
-	hover.bg_color = Color("#245267")
+	hover.bg_color = Color("#304954")
 	theme.set_stylebox("hover", "Button", hover)
 	theme.set_stylebox("pressed", "Button", hover)
 	var disabled = normal.duplicate()
@@ -92,6 +104,7 @@ func build_ui():
 	theme.set_color("font_color", "Button", Color("#e6fff9"))
 	theme.set_color("font_disabled_color", "Button", Color("#65758c"))
 	ui.theme = theme
+	get_viewport().size_changed.connect(update_safe_area)
 	toast = Label.new()
 	toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	toast.offset_left = -194
@@ -117,15 +130,15 @@ func clear_ui():
 func panel(title, subtitle = ""):
 	clear_ui()
 	var shade = ColorRect.new()
-	shade.color = Color(0.015, 0.025, 0.055, 0.92)
+	shade.color = Color(0.026, 0.045, 0.061, 0.95)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ui.add_child(shade)
 	var margin = MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for edge in ["left", "right"]:
 		margin.add_theme_constant_override("margin_" + edge, 22)
-	margin.add_theme_constant_override("margin_top", 40)
-	margin.add_theme_constant_override("margin_bottom", 40)
+	margin.add_theme_constant_override("margin_top", safe_top())
+	margin.add_theme_constant_override("margin_bottom", safe_bottom())
 	ui.add_child(margin)
 	var scroll = ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -178,25 +191,62 @@ func notify(value):
 
 func show_orders():
 	screen = "orders"
-	var box = panel("Ночной Курьер", balances())
-	text_label(box, "01 / СПАЛЬНЫЙ РАЙОН", 14, Color("#40f6d2"))
-	text_label(box, "Ещё один заказ — и выхожу.", 20)
-	text_label(box, "При провале потеряешь %s за смену.\nБанк защищён · бонус серии +%d%%."
-		% [money(game.profile["shift"]), int(game.profile["streak"]) * 12], 14)
+	city.set_view("ride")
+	var box = panel("Выбери маршрут", balances())
+	text_label(box, "01 / СПАЛЬНЫЙ РАЙОН  ·  3 ЗАКАЗА", 13, AMBER)
 	for index in range(game.offers.size()):
-		var order = game.offers[index]
-		var description = "%s  ·  %s\n%.2f км · риск %d%% · %d с\n%s" % [
-			order["name"], money(order["pay"]), order["distance"],
-			order["risk"], order["limit"], Catalog.DISTRICTS[order["district"]]["name"]
-		]
-		button(box, description, start_order.bind(index))
-	button(box, "В гараж · сохранить заработок", bank_and_garage)
-	button(box, "Коллекция и репутация", open_collection.bind("orders"))
-	text_label(box, "Риск — частота событий, не вероятность провала.\nЗакрытие игры в поездке завершает смену без заработка.", 13)
+		order_card(box, index)
+	text_label(box, "Под риском %s · бонус серии +%d%%" % [
+		money(game.profile["shift"]), int(game.profile["streak"]) * 12], 14, AMBER)
+	primary_button(box, "В ГАРАЖ · ЗАБРАТЬ ДЕНЬГИ", bank_and_garage)
+	button(box, "Главное меню", show_home)
+	text_label(box, "Риск — частота событий. Деньги в банке защищены.", 13)
+
+func order_card(parent, index):
+	var order = game.offers[index]
+	var accent = Color("#89cdbd") if order["risk"] < 15 else (AMBER if order["risk"] < 45 else Color("#f18f7d"))
+	var node = button(parent, "", start_order.bind(index))
+	node.name = "OrderCard%d" % index
+	node.custom_minimum_size.y = 120
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color("#142630")
+	style.border_color = accent.darkened(0.50)
+	style.border_width_left = 3
+	style.border_width_top = 1
+	style.border_width_bottom = 1
+	style.border_width_right = 1
+	style.set_corner_radius_all(12)
+	node.add_theme_stylebox_override("normal", style)
+	var margin = MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for edge in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + edge, 14)
+	node.add_child(margin)
+	var column = VBoxContainer.new()
+	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_theme_constant_override("separation", 5)
+	margin.add_child(column)
+	var row = HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_child(row)
+	var title = text_label(row, order["name"], 18)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var price = text_label(row, money(order["pay"]), 23, accent)
+	price.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	price.autowrap_mode = TextServer.AUTOWRAP_OFF
+	var details = text_label(column, "%.2f км   /   %d с   /   РИСК %d%%" % [
+		order["distance"], order["limit"], order["risk"]], 14, Color("#adbec7"))
+	details.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var district = text_label(column, "Спальный район                         ПРИНЯТЬ  →", 12, accent)
+	district.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 func bank_and_garage():
-	game.bank_shift()
-	show_garage()
+	if game.bank_shift():
+		show_garage()
+	else:
+		notify(game.last_message)
 
 func show_garage():
 	screen = "garage"
@@ -226,12 +276,14 @@ func show_garage():
 	text_label(box, "Привод: +5% скорости/уровень.\nШины: быстрее перестроение и меньше урон.\nЗащита: +12 прочности/уровень.\nНитро: дольше рывок и быстрее перезарядка.", 14)
 	button(box, "Выйти на смену", show_orders)
 	button(box, "Коллекция и репутация", open_collection.bind("garage"))
-	button(box, "Звук: " + ("включён" if sound_on else "выключен"), toggle_sound)
-	text_label(box, "MVP 0.1 · один район\nГаражи, наём и другие районы — следующий этап.", 13)
+	button(box, "Главное меню", show_home)
+	text_label(box, "NIGHT COURIER / 0.2\nОдин район. Большая ночь.", 13)
 
 func toggle_sound():
 	sound_on = not sound_on
-	show_garage()
+	preferences.sound = sound_on
+	preferences.save()
+	show_settings()
 
 func select_vehicle(id):
 	if game.select_vehicle(id):
@@ -266,7 +318,9 @@ func show_collection():
 	button(box, "Назад", close_collection)
 
 func close_collection():
-	if collection_origin == "garage":
+	if collection_origin == "home":
+		show_home()
+	elif collection_origin == "garage":
 		show_garage()
 	else:
 		show_orders()
@@ -275,7 +329,9 @@ func start_order(index):
 	if game.start_order(index):
 		city.start(game.profile["vehicle"])
 		show_ride()
-		notify("Свайп по нижней панели: сменить полосу.\nУдержание: ускориться.")
+		notify("Заказ принят. Удачной смены.")
+	else:
+		notify(game.last_message)
 
 func show_ride():
 	screen = "ride"
@@ -284,7 +340,7 @@ func show_ride():
 	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	top.offset_left = 22
 	top.offset_right = -22
-	top.offset_top = 40
+	top.offset_top = safe_top()
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(top)
 	hud = text_label(top, "", 17)
@@ -296,18 +352,25 @@ func show_ride():
 	meter.show_percentage = false
 	meter.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(meter)
+	health_meter = ProgressBar.new()
+	health_meter.show_percentage = false
+	health_meter.custom_minimum_size.y = 6
+	var fill = StyleBoxFlat.new()
+	fill.bg_color = AMBER
+	health_meter.add_theme_stylebox_override("fill", fill)
+	top.add_child(health_meter)
 	var bottom = VBoxContainer.new()
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom.offset_left = 18
 	bottom.offset_right = -18
-	bottom.offset_top = -180
-	bottom.offset_bottom = -30
+	bottom.offset_top = -150 - safe_bottom()
+	bottom.offset_bottom = -safe_bottom()
 	bottom.add_theme_constant_override("separation", 8)
 	ui.add_child(bottom)
 	var row = HBoxContainer.new()
 	bottom.add_child(row)
 	button(row, "Пауза", pause_game)
-	button(row, "Нитро", activate_nitro)
+	nitro_button = button(row, "НИТРО · ГОТОВО", activate_nitro)
 	var pad = PanelContainer.new()
 	pad.custom_minimum_size.y = 80
 	pad.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -341,10 +404,10 @@ func drive_input(event):
 		if absf(delta_x) >= 35:
 			game.lane_change(1 if delta_x > 0 else -1)
 			origin = event.position
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+	elif event is InputEventMouseButton and event.device != -1 and event.button_index == MOUSE_BUTTON_LEFT:
 		holding = event.pressed
 		origin = event.position
-	elif event is InputEventMouseMotion and holding:
+	elif event is InputEventMouseMotion and event.device != -1 and holding and pointer_id == -1:
 		var delta_x = event.position.x - origin.x
 		if absf(delta_x) >= 35:
 			game.lane_change(1 if delta_x > 0 else -1)
@@ -354,7 +417,7 @@ func _input(event):
 	if event is InputEventScreenTouch and not event.pressed and event.index == pointer_id:
 		holding = false
 		pointer_id = -1
-	if event is InputEventMouseButton and not event.pressed:
+	if event is InputEventMouseButton and event.device != -1 and not event.pressed and pointer_id == -1:
 		holding = false
 	if screen != "ride":
 		return
@@ -380,7 +443,7 @@ func pause_game():
 	screen = "pause"
 	var box = panel("Пауза", "Поездка и таймер остановлены.")
 	button(box, "Продолжить", resume_game)
-	button(box, "Бросить заказ\nПотерять заработок смены", finish.bind("abandoned"))
+	button(box, "Отменить доставку…", confirm_abandon)
 
 func resume_game():
 	if previous_screen == "event":
@@ -398,8 +461,10 @@ func _notification(what):
 			pause_game()
 		elif screen == "collection":
 			close_collection()
-		elif screen == "garage":
-			show_orders()
+		elif screen in ["garage", "orders", "settings", "help"]:
+			show_home()
+		elif screen == "confirm_abandon":
+			return_to_pause()
 
 func update_hud():
 	if screen != "ride" or game.run.is_empty():
@@ -411,9 +476,13 @@ func update_hud():
 		"готово" if game.nitro_cooldown <= 0 else "%d с" % int(ceil(game.nitro_cooldown))
 	]
 	meter.value = clampf(100 * (1 - run["distance"] / run["initial"]), 0, 100)
+	health_meter.value = clampf(100 * run["health"] / run["max_health"], 0, 100)
+	nitro_button.disabled = game.nitro_cooldown > 0
+	nitro_button.text = "НИТРО · ГОТОВО" if game.nitro_cooldown <= 0 else "НИТРО · %d с" % int(ceil(game.nitro_cooldown))
 
 func on_collision():
 	if screen == "ride" and game.collision():
+		city.impact()
 		notify("Столкновение! Прочность снижена.")
 
 func show_event():
@@ -447,7 +516,8 @@ func finish(reason):
 		"lost": "Заказ потерян или транспорт сломан.", "timeout": "Время доставки истекло.",
 		"abandoned": "Заказ отменён."
 	}
-	var box = panel("Доставлено" if result["success"] else "Смена окончена", reasons.get(reason, reason))
+	var title = "Груз продан" if reason == "sold" else ("Доставлено" if result["success"] else "Смена окончена")
+	var box = panel(title, reasons.get(reason, reason))
 	text_label(box, "+" + money(result["gain"]) if result["success"] else "Заработок смены потерян", 27)
 	text_label(box, balances())
 	for key in result["found"]:
@@ -460,27 +530,172 @@ func finish(reason):
 func _process(delta):
 	if not ready_done:
 		return
-	delta = minf(delta, 0.05)
+	delta = minf(delta, 0.25)
 	tick_audio()
 	if toast_left > 0:
 		toast_left -= delta
 		if toast_left <= 0:
 			toast.hide()
 	if screen == "ride":
-		var boost = holding or Input.is_physical_key_pressed(KEY_UP)
-		var speed_value = game.speed(boost)
-		game.tick(delta, boost)
-		city.tick(delta, speed_value, game.run["lane"], game.vehicle()["handling"] + (game.levels()["tires"] - 1) * 0.7)
-		var result = game.outcome()
-		if result != "":
-			finish(result)
-			return
-		if not game.maybe_event().is_empty():
-			show_event()
-			return
+		# Substeps prevent tunnelling and keep the timer correct below 20 FPS.
+		var remaining = delta
+		while remaining > 0.00001 and screen == "ride":
+			var step = minf(remaining, 1.0 / 60.0)
+			remaining -= step
+			var boost = holding or Input.is_physical_key_pressed(KEY_UP)
+			var speed_value = game.speed(boost)
+			game.tick(step, boost)
+			city.tick(step, speed_value, game.run["lane"], game.vehicle()["handling"] + (game.levels()["tires"] - 1) * 0.7)
+			var result = game.outcome()
+			if result != "":
+				finish(result)
+				return
+			if not game.maybe_event().is_empty():
+				show_event()
+				return
 		hud_left -= delta
 		if hud_left <= 0:
 			hud_left = 0.1
 			update_hud()
-	elif screen not in ["pause", "event"]:
+	elif screen not in ["pause", "event", "confirm_abandon"]:
 		city.tick(delta)
+
+func safe_top():
+	if OS.get_name() not in ["Android", "iOS"]:
+		return 38
+	var area = DisplayServer.get_display_safe_area()
+	var window_height = maxf(1, DisplayServer.window_get_size().y)
+	return maxi(32, int(area.position.y * get_viewport().get_visible_rect().size.y / window_height) + 12)
+
+func safe_bottom():
+	if OS.get_name() not in ["Android", "iOS"]:
+		return 26
+	var area = DisplayServer.get_display_safe_area()
+	var window_height = maxf(1, DisplayServer.window_get_size().y)
+	var inset = maxf(0, window_height - area.end.y)
+	return maxi(26, int(inset * get_viewport().get_visible_rect().size.y / window_height) + 12)
+
+func update_safe_area():
+	if not ready_done:
+		return
+	if screen == "home":
+		show_home()
+	elif screen == "ride":
+		show_ride()
+
+func primary_button(parent, title, callback):
+	var node = button(parent, title, callback)
+	node.custom_minimum_size.y = 60
+	node.add_theme_font_size_override("font_size", 17)
+	node.add_theme_color_override("font_color", INK)
+	node.add_theme_color_override("font_hover_color", INK)
+	node.add_theme_color_override("font_pressed_color", INK)
+	node.add_theme_color_override("font_focus_color", INK)
+	var style = StyleBoxFlat.new()
+	style.bg_color = AMBER
+	style.set_corner_radius_all(12)
+	node.add_theme_stylebox_override("normal", style)
+	var hovered = style.duplicate()
+	hovered.bg_color = Color("#fbd19a")
+	node.add_theme_stylebox_override("hover", hovered)
+	node.add_theme_stylebox_override("pressed", hovered)
+	return node
+
+func show_home():
+	if not game.run.is_empty():
+		return
+	screen = "home"
+	clear_ui()
+	city.stop()
+	city.set_view("menu", true)
+	var overlay = ColorRect.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var shader_material = ShaderMaterial.new()
+	shader_material.shader = MenuOverlay
+	overlay.material = shader_material
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(overlay)
+	var top = VBoxContainer.new()
+	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	top.offset_left = 28
+	top.offset_right = -28
+	top.offset_top = safe_top()
+	top.add_theme_constant_override("separation", 10)
+	ui.add_child(top)
+	text_label(top, "N / C                        01:47  ·  ДОЖДЬ", 13, AMBER)
+	text_label(top, "НОЧНОЙ\nКУРЬЕР", 52, PAPER)
+	text_label(top, "Город не спит.\nТвоя смена только начинается.", 17, Color("#b4c6cc"))
+	var bottom = VBoxContainer.new()
+	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	bottom.offset_left = 28
+	bottom.offset_right = -28
+	bottom.offset_top = -245 - safe_bottom()
+	bottom.offset_bottom = -safe_bottom()
+	bottom.add_theme_constant_override("separation", 10)
+	ui.add_child(bottom)
+	var stats = HBoxContainer.new()
+	bottom.add_child(stats)
+	var bank = text_label(stats, "В БАНКЕ\n" + money(game.profile["bank"]), 17)
+	bank.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text_label(stats, "СМЕНА\n" + money(game.profile["shift"]), 17, AMBER)
+	var start = primary_button(bottom, "ПРОДОЛЖИТЬ СМЕНУ  →" if game.profile["streak"] > 0 else "НАЧАТЬ СМЕНУ  →", begin_shift)
+	start.name = "StartShift"
+	var nav = HBoxContainer.new()
+	nav.add_theme_constant_override("separation", 8)
+	bottom.add_child(nav)
+	button(nav, "Гараж", bank_and_garage)
+	button(nav, "Находки", open_collection.bind("home"))
+	button(nav, "Настройки", show_settings)
+	var footer = text_label(bottom, "ЕЩЁ ОДИН ЗАКАЗ — И ВЫХОЖУ.     /     0.2", 11, Color("#8da2aa"))
+	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if game.store.last_error != "":
+		notify(game.store.last_error)
+
+func begin_shift():
+	if preferences.tutorial_seen:
+		show_orders()
+	else:
+		show_help()
+
+func show_help():
+	screen = "help"
+	var box = panel("Твоя первая ночь", "Три простых правила перед выездом.")
+	text_label(box, "01  ВЫБЕРИ ЗАКАЗ", 17, AMBER)
+	text_label(box, "Большая оплата означает больше рискованных событий. Для первой поездки подойдёт спокойный заказ.", 17)
+	text_label(box, "02  ДЕРЖИ ПОЛОСУ", 17, AMBER)
+	text_label(box, "Свайп по нижней панели — влево или вправо. Удержание ускоряет. Кнопка нитро даёт короткий рывок.", 17)
+	text_label(box, "03  ВОВРЕМЯ ВЕРНИСЬ", 17, AMBER)
+	text_label(box, "Деньги за смену можно потерять при провале. В гараже они переходят в защищённый банк. При закрытии игры во время заказа смена теряется.", 17)
+	primary_button(box, "ПОНЯТНО · К ЗАКАЗАМ", complete_tutorial)
+	button(box, "Главное меню", show_home)
+
+func complete_tutorial():
+	preferences.tutorial_seen = true
+	preferences.save()
+	show_orders()
+
+func show_settings():
+	screen = "settings"
+	var box = panel("Под себя", "Настройки сохраняются между запусками.")
+	button(box, "Звук: " + ("включён" if sound_on else "выключен"), toggle_sound)
+	button(box, "Графика: " + ("высокая" if preferences.quality == "high" else "экономная"), toggle_quality)
+	text_label(box, "Высокая: динамические тени, больше дождя, детальный мокрый асфальт.\n\nЭкономная: без теней, меньше дождя. Подходит для слабых телефонов.", 16)
+	button(box, "Как играть", show_help)
+	primary_button(box, "ГОТОВО", show_home)
+
+func toggle_quality():
+	preferences.quality = "low" if preferences.quality == "high" else "high"
+	preferences.save()
+	city.set_quality(preferences.quality)
+	show_settings()
+
+func confirm_abandon():
+	screen = "confirm_abandon"
+	var box = panel("Закончить смену?", "Заказ будет отменён.")
+	text_label(box, "Ты потеряешь %s за эту смену. Деньги в банке останутся." % money(game.profile["shift"]), 20)
+	primary_button(box, "ОСТАТЬСЯ В ИГРЕ", return_to_pause)
+	button(box, "Да, отменить заказ", finish.bind("abandoned"))
+
+func return_to_pause():
+	screen = previous_screen
+	pause_game()

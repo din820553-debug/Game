@@ -69,7 +69,10 @@ func start_order(index):
 	nitro_left = 0
 	nitro_cooldown = 0
 	profile["active_delivery"] = true
-	save()
+	if not save():
+		profile["active_delivery"] = false
+		run.clear()
+		return false
 	return true
 
 func speed(boost = false):
@@ -175,6 +178,7 @@ func apply_effect(effect):
 		change_rep(int(key), effect["rep"][key])
 	run["time"] += effect.get("time", 0)
 	run["distance"] = maxf(0, run["distance"] + effect.get("distance", 0))
+	run["initial"] += maxf(0, effect.get("distance", 0))
 	if effect.has("damage"):
 		damage(effect["damage"])
 	if effect.has("pay"):
@@ -238,16 +242,23 @@ func settle(reason):
 func bank_shift():
 	if not run.is_empty():
 		return false
+	var changed = profile["shift"] > 0 or profile["streak"] > 0
+	if not changed:
+		return true
+	var before = profile.duplicate(true)
 	profile["bank"] += profile["shift"]
 	profile["shift"] = 0
 	profile["streak"] = 0
-	save()
+	if not save():
+		profile = before
+		return false
 	generate_offers()
 	return true
 
 func select_vehicle(id):
 	if not run.is_empty() or not Catalog.VEHICLES.has(id):
 		return false
+	var before = profile.duplicate(true)
 	if not profile["owned"].has(id):
 		var cost = Catalog.VEHICLES[id]["price"]
 		if profile["bank"] < cost:
@@ -255,7 +266,9 @@ func select_vehicle(id):
 		profile["bank"] -= cost
 		profile["owned"].append(id)
 	profile["vehicle"] = id
-	save()
+	if not save():
+		profile = before
+		return false
 	return true
 
 func upgrade_cost(key):
@@ -267,7 +280,10 @@ func buy_upgrade(key):
 	var cost = upgrade_cost(key)
 	if levels()[key] >= 10 or profile["bank"] < cost:
 		return false
+	var before = profile.duplicate(true)
 	profile["bank"] -= cost
 	levels()[key] += 1
-	save()
+	if not save():
+		profile = before
+		return false
 	return true

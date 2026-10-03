@@ -209,6 +209,8 @@ func run_tests():
 	app.start_order(0)
 	await process_frame
 	check(app.screen == "ride", "ride screen")
+	var rider_screen = app.city.camera.unproject_position(app.city.rider.global_position + Vector3(0, 1, 0))
+	check(rider_screen.y < root.get_visible_rect().size.y - 185, "courier stays above touch panel")
 	var touch = InputEventScreenTouch.new()
 	touch.index = 0
 	touch.position = Vector2(100, 20)

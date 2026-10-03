@@ -7,10 +7,10 @@ import sys
 mode = sys.argv[1]
 commands = {
     "import": ["godot", "--headless", "--editor", "--path", ".", "--import"],
-    "tests": ["xvfb-run", "-a", "godot", "--path", ".", "--audio-driver", "Dummy",
+    "tests": ["xvfb-run", "-a", "godot", "--verbose", "--path", ".", "--audio-driver", "Dummy",
               "--rendering-method", "gl_compatibility", "--script", "res://tests/test_game.gd"],
     "screenshots": [
-        "xvfb-run", "-a", "godot", "--path", ".", "--audio-driver", "Dummy",
+        "xvfb-run", "-a", "godot", "--verbose", "--path", ".", "--audio-driver", "Dummy",
         "--rendering-method", "gl_compatibility", "--script", "res://tests/capture.gd"
     ],
     "android": ["godot", "--headless", "--path", ".", "--export-debug", "Android", "build/night-courier-debug.apk"],

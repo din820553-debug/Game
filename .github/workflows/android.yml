@@ -29,6 +29,7 @@ jobs:
       - name: Test gameplay, persistence and UI
         run: python3 ci/check.py tests
       - name: Capture real rendered screens
+        if: always()
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: python3 ci/check.py screenshots

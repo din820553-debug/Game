@@ -185,9 +185,12 @@ func run_tests():
 	root.add_child(app)
 	app.set_process(false)
 	await process_frame
+	await process_frame
+	await process_frame
 	check(app.screen == "home", "main menu on launch")
 	var start_button = app.ui.find_child("StartShift", true, false)
 	check(start_button != null, "main CTA exists")
+	print("LAYOUT: viewport=", root.get_visible_rect(), " start=", start_button.get_global_rect())
 	check(root.get_visible_rect().encloses(start_button.get_global_rect()), "main CTA fits portrait screen")
 	app.begin_shift()
 	check(app.screen == "help", "first launch tutorial")

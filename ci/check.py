@@ -1,4 +1,5 @@
 """Run Godot and fail even if a script error did not change its exit code."""
+import os
 import pathlib
 import subprocess
 import sys
@@ -6,7 +7,8 @@ import sys
 mode = sys.argv[1]
 commands = {
     "import": ["godot", "--headless", "--editor", "--path", ".", "--import"],
-    "tests": ["godot", "--headless", "--path", ".", "--script", "res://tests/test_game.gd"],
+    "tests": ["xvfb-run", "-a", "godot", "--path", ".", "--audio-driver", "Dummy",
+              "--rendering-method", "gl_compatibility", "--script", "res://tests/test_game.gd"],
     "screenshots": [
         "xvfb-run", "-a", "godot", "--path", ".", "--audio-driver", "Dummy",
         "--rendering-method", "gl_compatibility", "--script", "res://tests/capture.gd"
@@ -16,7 +18,8 @@ commands = {
 pathlib.Path("build/logs").mkdir(parents=True, exist_ok=True)
 try:
     result = subprocess.run(commands[mode], stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, timeout=240)
+                            stderr=subprocess.STDOUT, text=True, timeout=240,
+                            env={**os.environ, "LIBGL_ALWAYS_SOFTWARE": "1"})
 except subprocess.TimeoutExpired as error:
     print(error.stdout)
     raise SystemExit("Godot timed out")

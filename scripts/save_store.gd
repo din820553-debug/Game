@@ -77,7 +77,10 @@ func read_file(file_path):
 	var file = FileAccess.open(file_path, FileAccess.READ)
 	if file == null:
 		return null
-	return JSON.parse_string(file.get_as_text())
+	var parser = JSON.new()
+	if parser.parse(file.get_as_text()) != OK:
+		return null
+	return parser.data
 
 func load_profile():
 	last_error = ""

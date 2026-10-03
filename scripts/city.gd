@@ -37,7 +37,7 @@ func mat(color, emission = false, metallic = 0.0):
 	if emission:
 		result.emission_enabled = true
 		result.emission = color
-		result.emission_energy_multiplier = 1.35
+		result.emission_energy_multiplier = 0.70
 	materials[key] = result
 	return result
 
@@ -98,7 +98,7 @@ func build():
 	environment.background_color = Color("#081521")
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color("#91abc4")
-	environment.ambient_light_energy = 0.48
+	environment.ambient_light_energy = 0.70
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	sky.environment = environment
 	add_child(sky)
@@ -291,7 +291,7 @@ func set_view(value, immediate = false):
 	view = value
 	if immediate:
 		camera.position = Vector3(5.6, 3.3, 10) if view == "menu" else Vector3(0, 13.8, 14)
-		camera.look_at(Vector3(0, 1.0, 3.6) if view == "menu" else Vector3(0, 0, -9))
+		camera.look_at(Vector3(0, 1.0, 3.6) if view == "menu" else Vector3(0, 0, -2))
 
 func start(id):
 	clear_traffic()
@@ -348,7 +348,7 @@ func tick(delta, speed_value = 0.0, lane = 1, handling = 8.0):
 	camera.position = camera.position.lerp(desired, minf(1, delta * 6))
 	if shake_left > 0:
 		camera.position.x += sin(clock * 92) * shake_left * 0.22
-	camera.look_at(Vector3(0, 1.0, 3.6) if view == "menu" else Vector3(0, 0, -9))
+	camera.look_at(Vector3(0, 1.0, 3.6) if view == "menu" else Vector3(0, 0, -2))
 	for i in range(rain_node.multimesh.visible_instance_count):
 		var p = rain_positions[i]
 		p.y -= delta * 17

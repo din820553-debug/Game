@@ -37,6 +37,7 @@ func capture():
 	app.city.obstacles[0].position.z = -7
 	app.city.spawn_car()
 	app.city.obstacles[1].position = Vector3(-2.8, 0, -18)
+	app.toast.hide()
 	await snap("02-ride", true)
 	app.game.run["current_event"] = app.game.events[0]
 	app.show_event()

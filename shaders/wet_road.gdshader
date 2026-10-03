@@ -23,10 +23,10 @@ void fragment() {
 	float puddle = smoothstep(0.42, 0.72, noise(p * vec2(0.75, 0.18)));
 	float ripple = sin(p.y * 31.0 + TIME * 3.0) * sin(p.x * 43.0 - TIME * 2.0);
 	float wet = detailed ? puddle : 0.35;
-	ALBEDO = mix(vec3(0.065, 0.079, 0.094), vec3(0.018, 0.030, 0.047), wet);
+	ALBEDO = mix(vec3(0.13, 0.15, 0.17), vec3(0.045, 0.065, 0.085), wet);
 	ALBEDO *= 0.82 + grain * 0.35;
 	ROUGHNESS = mix(0.72, 0.14, wet);
-	METALLIC = wet * 0.5;
+	METALLIC = wet * 0.28;
 	float pools = pow(max(0.0, cos(p.y * 0.52)), 8.0);
 	float left = exp(-pow((p.x + 3.9) * 1.5, 2.0));
 	float right = exp(-pow((p.x - 3.9) * 1.5, 2.0));

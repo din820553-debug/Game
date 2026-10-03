@@ -637,7 +637,9 @@ func show_home():
 	bottom.add_child(stats)
 	var bank = text_label(stats, "В БАНКЕ\n" + money(game.profile["bank"]), 17)
 	bank.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	text_label(stats, "СМЕНА\n" + money(game.profile["shift"]), 17, AMBER)
+	var shift_label = text_label(stats, "СМЕНА\n" + money(game.profile["shift"]), 17, AMBER)
+	shift_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	shift_label.custom_minimum_size.x = 108
 	var start = primary_button(bottom, "ПРОДОЛЖИТЬ СМЕНУ  →" if game.profile["streak"] > 0 else "НАЧАТЬ СМЕНУ  →", begin_shift)
 	start.name = "StartShift"
 	var nav = HBoxContainer.new()
